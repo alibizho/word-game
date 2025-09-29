@@ -10,14 +10,6 @@ A real-time multiplayer word chain game built with Node.js, Express, and WebSock
 4. **Play**: Take turns submitting words that start with the last letter of the previous word
 5. **Win**: The last player standing wins!
 
-## 🚀 Features
-
-- **Real-time Multiplayer**: WebSocket-based communication for instant gameplay
-- **Room-based Matchmaking**: Create and join private game rooms
-- **Word Validation**: Dictionary API integration to verify valid words
-- **Turn-based Gameplay**: Enforces proper turn order and game rules
-- **Live Game State**: Real-time updates of scores, lives, and game progress
-- **Responsive Design**: Works on desktop and mobile devices
 
 ## 🛠️ Tech Stack
 
@@ -80,26 +72,4 @@ The server runs on port 3000 by default. You can change this by setting the `POR
 PORT=8080 npm start
 ```
 
-## 📱 Browser Support
-
-- Chrome (recommended)
-- Firefox
-- Safari
-- Edge
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the ISC License.
-
-## 🎉 Acknowledgments
-
 - Dictionary API provided by [dictionaryapi.dev](https://dictionaryapi.dev/)
-- WebSocket library by [ws](https://github.com/websockets/ws)
