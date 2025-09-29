@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Word Chain Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- room code display -->
+    <div id="roomCode" class="room-code hidden">
+        Room: <span id="roomCodeText"></span>
+    </div>
+    
+    <!-- notification system -->
+    <div id="notification" class="notification"></div>
+
+    <div class="container">
+        <!-- lobby UI -->
+        <div class="lobby" id="lobby">
+            <h1>Word Game</h1>
+            <div class="lobby-options">
+                <button class="option-btn" id="createOption">Create</button>
+                <button class="option-btn" id="joinOption">Join</button>
+            </div>
+            <input type="text" id="roomCodeInput" placeholder="Enter room code" maxlength="6" style="display: none;">
+
+        </div>
+
+        <!-- main game UI -->
+        <div class="game-container" id="gameUI">
+            <div class="main-game-area">
+                <!-- last word display -->
+                <div class="last-word">
+                    <div class="last-word-label">Last word</div>
+                    <span id="lastWord">-</span>
+                </div>
+                
+                <!-- players area -->
+                <div class="players">
+                    <div class="player" id="player1">
+                        <div>👤</div>
+                        <div>Player 1</div>
+                        <div class="score">0</div>
+                        <div class="lives">❤️❤️❤️</div>
+                    </div>
+                    <div class="timer-arrow-container">
+                        <div class="timer">10</div>
+                        <div class="arrow" id="turnArrow">➔</div>
+                    </div>
+                    <div class="player" id="player2">
+                        <div>👤</div>
+                        <div>Player 2</div>
+                        <div class="score">0</div>
+                        <div class="lives">❤️❤️❤️</div>
+                    </div>
+                </div>
+
+                <!-- game controls -->
+                <div class="input-control-group">
+                    <input type="text" 
+                           class="word-input" 
+                           id="wordInput" 
+                           placeholder="Enter a word" 
+                           disabled>
+                    <div class="game-controls">
+                        <button id="startGameBtn" class="control-btn" disabled>Start Game</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- used words section -->
+            <div class="used-words">
+                <h3>Used Words</h3>
+                <div id="usedWords"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // websocket and game state variables
+    let ws;
+    let playerId = null;
+    let currentRoom = null;
+
+    // notification system
+    function showNotification(message, type = 'success') {
+        const notification = document.getElementById('notification');
+        notification.textContent = message;
+        notification.className = 'notification ' + type;
+        notification.offsetHeight; 
+        notification.classList.add('show');
+        
+        setTimeout(() => {
+            notification.classList.remove('show');
+        }, 5000);
+    }
+
+    // ui utility functions
+    function clearWordInput() {
+        document.getElementById('wordInput').value = '';
+    }
+
+    function showRoomCode(code) {
+        const roomCodeDiv = document.getElementById('roomCode');
+        const roomCodeText = document.getElementById('roomCodeText');
+        roomCodeText.textContent = code;
+        roomCodeDiv.classList.remove('hidden');
+    }
+
+    // websocket connection setup
+    function connect() {
+        ws = new WebSocket(`ws://${window.location.host}`);
+
+        ws.onopen = () => console.log('Connected to server');
+
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            console.log('Received message:', message);
+
+            // message handler
+            switch (message.type) {
+                case 'player_assigned':
+                    playerId = message.playerId;
+                    break;
+
+                case 'room_created':
+                    currentRoom = message.roomId;
+                    playerId = message.playerId;
+                    showRoomCode(currentRoom);
+                    showNotification(`Room created! Share this code: ${currentRoom}`);
+                    showGameUI();
+                    break;
+
+                case 'player_joined':
+                    updateGameState(message.gameState);
+                    showNotification('Player 2 has joined! Waiting for Player 1 to start the game.', 'success');
+                    showGameUI();
+                    break;
+
+                case 'game_started':
+                    updateGameState(message.gameState);
+                    document.getElementById('wordInput').disabled = false;
+                    showNotification('Game started!', 'success');
+                    break;
+
+                case 'game_state_update':
+                    updateGameState(message.gameState);
+                    break;
+
+                case 'word_accepted':
+                    clearWordInput();
+                    updateGameState(message.gameState);
+                    showNotification('Word accepted!', 'success');
+                    break;
+
+                case 'word_rejected':
+                    clearWordInput();
+                    showNotification(message.message, 'error');
+                    break;
+
+                case 'game_over':
+                    updateGameState(message.gameState);
+                    handleGameOver(message.gameState);
+                    break;
+
+                case 'error':
+                    clearWordInput();
+                    showNotification(message.message, 'error');
+                    break;
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('Disconnected from server');
+            setTimeout(connect, 1000);
+        };
+    }
+
+    // game ui management
+    function showGameUI() {
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('gameUI').classList.add('active');
+    }
+
+    function updateGameState(gameState) {
+        // update last word
+        document.getElementById('lastWord').textContent = gameState.lastWord || '-';
+        
+        // update timer
+        document.querySelector('.timer').textContent = gameState.timer;
+
+        // update scores
+        if (gameState.scores) {
+            document.querySelector('#player1 .score').textContent = gameState.scores.player1 || 0;
+            document.querySelector('#player2 .score').textContent = gameState.scores.player2 || 0;
+        }
+
+        // update player highlights
+        const player1El = document.querySelector('#player1');
+        const player2El = document.querySelector('#player2');
+        player1El.style.opacity = gameState.currentPlayer === 'player1' ? '1' : '0.5';
+        player2El.style.opacity = gameState.currentPlayer === 'player2' ? '1' : '0.5';
+
+        // update input state
+        const wordInput = document.getElementById('wordInput');
+        const isMyTurn = gameState.currentPlayer === playerId;
+        wordInput.disabled = gameState.gameState !== 'playing' || !isMyTurn;
+        wordInput.placeholder = gameState.gameState === 'playing' 
+            ? (isMyTurn ? 'Enter a word' : 'Waiting for other player...')
+            : 'Game not active';
+
+        // update used words
+        const usedWordsDiv = document.getElementById('usedWords');
+        usedWordsDiv.innerHTML = '';
+        if (gameState.usedWords && gameState.usedWords.length > 0) {
+            usedWordsDiv.textContent = gameState.usedWords.join('; ');
+        }
+
+        // update turn arrow
+        const turnArrow = document.getElementById('turnArrow');
+        turnArrow.className = 'arrow ' + (gameState.currentPlayer === 'player1' ? 'left' : 'right');
+
+        // update lives
+        updateLives(gameState);
+
+        // update start button visibility
+        updateStartButton(gameState);
+    }
+
+    function updateLives(gameState) {
+        if (gameState.lives) {
+            const player1Lives = '❤️'.repeat(gameState.lives.player1);
+            const player2Lives = '❤️'.repeat(gameState.lives.player2);
+            document.querySelector('#player1 .lives').textContent = player1Lives;
+            document.querySelector('#player2 .lives').textContent = player2Lives;
+        }
+    }
+
+    function handleGameOver(gameState) {
+        const winner = gameState.winner === playerId ? 'You won!' : 'You lost!';
+        showNotification(winner, gameState.winner === playerId ? 'success' : 'error');
+        document.getElementById('wordInput').disabled = true;
+        updateStartButton(gameState);
+    }
+
+    function updateStartButton(gameState) {
+        const startButton = document.getElementById('startGameBtn');
+        if (gameState.gameState === 'waiting' || gameState.gameState === 'finished') {
+            startButton.style.display = 'block';
+            startButton.disabled = (playerId !== 'player1' || gameState.players.length < 2);
+        } else {
+            startButton.style.display = 'none';
+        }
+    }
+
+    // event listeners 
+    document.getElementById('createOption').addEventListener('click', () => {
+        ws.send(JSON.stringify({ type: 'create_room' }));
+    });
+
+    document.getElementById('joinOption').addEventListener('click', () => {
+        const input = document.getElementById('roomCodeInput');
+        input.style.display = 'block';
+        input.focus();
+    });
+
+    document.getElementById('roomCodeInput').addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            const roomId = event.target.value.trim().toUpperCase();
+            if (roomId) {
+                ws.send(JSON.stringify({
+                    type: 'join_room',
+                    roomId: roomId
+                }));
+            }
+        }
+    });
+
+    document.getElementById('wordInput').addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            const wordInput = document.getElementById('wordInput');
+            const word = wordInput.value.trim();
+            if (word) {
+                ws.send(JSON.stringify({
+                    type: 'submit_word',
+                    word: word,
+                    playerId: playerId
+                }));
+                wordInput.value = '';
+            }
+        }
+    });
+
+    document.getElementById('startGameBtn').addEventListener('click', () => {
+        ws.send(JSON.stringify({ type: 'start_game' }));
+    });
+
+    // initialize connection
+    connect();
+    </script>
+</body>
+</html>
