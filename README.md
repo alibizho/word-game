@@ -1,6 +1,6 @@
 # Word Chain Game
 
-A real-time multiplayer word chain game built with Node.js, Express, and WebSockets. Players take turns creating word chains where each word must start with the last letter of the previous word.
+A multiplayer word chain game you can play over your local network in real time. Built with Node.js, Express, and WebSockets, players take turns creating words where each new word must start with the last letter of the previous one.
 
 ## 🎮 How to Play
 
@@ -27,7 +27,7 @@ A real-time multiplayer word chain game built with Node.js, Express, and WebSock
 
 1. **Clone the repository**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/alibizho/word-game.git
    cd wordgame
    ```
 
