@@ -1,6 +1,6 @@
 # Word Chain Game
 
-A multiplayer word chain game you can play over your local network in real time. Built with Node.js, Express, and WebSockets, players take turns creating words where each new word must start with the last letter of the previous one.
+A multiplayer word chain game you can play over your local network in real time. Built with Node.js, Express, and WebSockets, players take turns creating words where each new word must start with the last letter of the previous one. 
 
 ## 🎮 How to Play
 
@@ -73,3 +73,5 @@ PORT=8080 npm start
 ```
 
 - Dictionary API provided by [dictionaryapi.dev](https://dictionaryapi.dev/)
+
+(didn't want to spend time on making the readme, so yea... its ai)
