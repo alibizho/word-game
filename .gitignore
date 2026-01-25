@@ -96,3 +96,9 @@ logs
 # Temporary files
 tmp/
 temp/
+
+# Test files
+tests/
+
+# IDE workspace files
+*.code-workspace

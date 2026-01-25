@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/stress-test.js",
+    "test:basic": "node tests/basic-test.js",
+    "stress": "node tests/stress-test.js 100 300",
+    "stress:full": "node tests/stress-test.js 400 600"
   },
   "keywords": [],
   "author": "",
@@ -11,6 +15,9 @@
   "description": "",
   "dependencies": {
     "express": "^5.1.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
     "ws": "^8.18.3"
   }
 }

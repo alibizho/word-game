@@ -13,6 +13,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // game state storage
 const rooms = new Map();
 const clientConnections = new Map();
+const roomTimers = new Map(); 
 
 // initial game state template
 function createGameState() {
@@ -43,7 +44,14 @@ wss.on('connection', (ws) => {
     
     // message handler
     ws.on('message', (message) => {
-        const data = JSON.parse(message);
+        let data;
+        try {
+            data = JSON.parse(message);
+        } catch (error) {
+            console.error('Invalid JSON received:', error);
+            return sendError(ws, 'Invalid message format');
+        }
+        
         console.log('Received message:', data);
 
         switch (data.type) {
@@ -54,7 +62,15 @@ wss.on('connection', (ws) => {
         }
     });
 
-    ws.on('close', () => console.log('Client disconnected'));
+    ws.on('close', () => {
+        console.log('Client disconnected');
+        cleanupConnection(ws);
+    });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
+        cleanupConnection(ws);
+    });
 });
 
 // room management functions
@@ -73,6 +89,10 @@ function handleCreateRoom(ws) {
 }
 
 function handleJoinRoom(ws, roomId) {
+    if (!roomId || typeof roomId !== 'string') {
+        return sendError(ws, 'Invalid room ID');
+    }
+    
     const room = rooms.get(roomId);
     if (!room) return sendError(ws, 'Room not found');
     if (room.gameState.players.length >= 2) return sendError(ws, 'Room is full');
@@ -101,8 +121,24 @@ async function handleSubmitWord(ws, word) {
     const room = rooms.get(roomId);
     if (!room) return;
 
+    // input validation
+    if (!word || typeof word !== 'string') {
+        return sendToPlayer(roomId, playerId, {
+            type: 'word_rejected',
+            message: 'Invalid word input'
+        });
+    }
+
     const gameState = room.gameState;
-    word = word.toLowerCase();
+    word = word.toLowerCase().trim();
+    
+    // validate word format (letters only, reasonable length)
+    if (!/^[a-z]+$/.test(word) || word.length < 2 || word.length > 50) {
+        return sendToPlayer(roomId, playerId, {
+            type: 'word_rejected',
+            message: 'Word must be 2-50 letters only'
+        });
+    }
 
     // various game rule checks
     if (gameState.gameState === 'finished') {
@@ -152,9 +188,19 @@ async function handleSubmitWord(ws, word) {
         gameState.lives[playerId]--;
         checkGameOver(room, playerId);
         
+        // Provide more specific error messages
+        let errorMessage = `Invalid word. ${gameState.lives[playerId]} tries remaining.`;
+        
+        if (error.message.includes('fetch')) {
+            errorMessage = `Dictionary API error (network/rate limit). ${gameState.lives[playerId]} tries remaining.`;
+        } else if (error.message.includes('Invalid word')) {
+            errorMessage = `Word not found in dictionary. ${gameState.lives[playerId]} tries remaining.`;
+        }
+        
         sendToPlayer(roomId, playerId, {
             type: 'word_rejected',
-            message: `Invalid word. ${gameState.lives[playerId]} tries remaining.`
+            message: errorMessage,
+            errorType: error.message.includes('fetch') ? 'api_error' : 'invalid_word'
         });
     }
 }
@@ -168,6 +214,17 @@ function handleStartGame(ws) {
     const room = rooms.get(roomId);
     
     if (!room || playerId !== 'player1') return;
+    
+    // require both players to start
+    if (room.gameState.players.length < 2) {
+        return sendToPlayer(roomId, playerId, {
+            type: 'error',
+            message: 'Need 2 players to start'
+        });
+    }
+    
+    // stop any existing timer
+    stopGameTimer(roomId);
     
     // reset game state for new game
     room.gameState = {
@@ -195,31 +252,46 @@ function startGameTimer(roomId) {
     const room = rooms.get(roomId);
     if (!room || room.gameState.gameState !== 'playing') return;
 
+    // stop any existing timer first
+    stopGameTimer(roomId);
+
     room.gameState.timer = 10;
 
     const timerInterval = setInterval(() => {
-        if (!rooms.has(roomId) || room.gameState.gameState === 'finished' || room.gameState.gameState !== 'playing') {
+        const currentRoom = rooms.get(roomId);
+        if (!currentRoom || currentRoom.gameState.gameState !== 'playing') {
             clearInterval(timerInterval);
+            roomTimers.delete(roomId);
             return;
         }
 
-        room.gameState.timer--;
+        currentRoom.gameState.timer--;
 
-        if (room.gameState.timer <= 0) {
-            room.gameState.lives[room.gameState.currentPlayer]--;
-            checkGameOver(room, room.gameState.currentPlayer);
+        if (currentRoom.gameState.timer <= 0) {
+            currentRoom.gameState.lives[currentRoom.gameState.currentPlayer]--;
+            checkGameOver(currentRoom, currentRoom.gameState.currentPlayer);
             
-            if (room.gameState.gameState !== 'finished') {
-                room.gameState.currentPlayer = room.gameState.currentPlayer === 'player1' ? 'player2' : 'player1';
-                room.gameState.timer = 10;
+            if (currentRoom.gameState.gameState !== 'finished') {
+                currentRoom.gameState.currentPlayer = currentRoom.gameState.currentPlayer === 'player1' ? 'player2' : 'player1';
+                currentRoom.gameState.timer = 10;
             }
         }
 
         broadcastToRoom(roomId, {
             type: 'game_state_update',
-            gameState: room.gameState
+            gameState: currentRoom.gameState
         });
     }, 1000);
+    
+    roomTimers.set(roomId, timerInterval);
+}
+
+function stopGameTimer(roomId) {
+    const timer = roomTimers.get(roomId);
+    if (timer) {
+        clearInterval(timer);
+        roomTimers.delete(roomId);
+    }
 }
 
 // utility functions
@@ -254,9 +326,46 @@ function checkGameOver(room, lastPlayer) {
         gameState.gameState = 'finished';
         gameState.winner = lastPlayer === 'player1' ? 'player2' : 'player1';
         
+        // stop timer when game ends
+        stopGameTimer(room.id);
+        
         broadcastToRoom(room.id, {
             type: 'game_over',
             gameState: gameState
+        });
+    }
+}
+
+// cleanup functions
+function cleanupConnection(ws) {
+    const connection = clientConnections.get(ws);
+    if (!connection) return;
+
+    const { roomId, playerId } = connection;
+    clientConnections.delete(ws);
+
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    // remove player from room
+    const playerIndex = room.gameState.players.indexOf(playerId);
+    if (playerIndex > -1) {
+        room.gameState.players.splice(playerIndex, 1);
+    }
+
+    // check if room is empty and clean it up
+    const playersInRoom = Array.from(clientConnections.values())
+        .filter(conn => conn.roomId === roomId).length;
+    
+    if (playersInRoom === 0) {
+        stopGameTimer(roomId);
+        rooms.delete(roomId);
+        console.log(`Room ${roomId} cleaned up`);
+    } else {
+        // notify remaining players
+        broadcastToRoom(roomId, {
+            type: 'player_left',
+            gameState: room.gameState
         });
     }
 }
