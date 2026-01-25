@@ -4,7 +4,7 @@ This was a project I did for my web dev class. I wanted to learn more about netw
 
 Players take turns creating words where each new word must start with the last letter of the previous one. You can play it over your local network in real time using WebSockets.
 
-## Screenshots
+## Screenshots - i wanted the ui to be minimal
 
 Main screen:
 ![Main Screen](main-screen.jpeg)
